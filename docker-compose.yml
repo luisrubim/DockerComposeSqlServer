@@ -1,0 +1,38 @@
+x-sql-image: &sql-image mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
+
+services:
+  sqlserver:
+    image: *sql-image
+    container_name: sqldev
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Defina MSSQL_SA_PASSWORD no .env (copie de .env.example)}
+      MSSQL_COLLATION: ${MSSQL_COLLATION}
+    ports:
+      - "${SQL_BIND:-127.0.0.1}:${SQL_PORT:-1433}:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+      - ./backup:/var/opt/mssql/backup
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  restore:
+    image: *sql-image
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Defina MSSQL_SA_PASSWORD no .env (copie de .env.example)}
+      DB_NAME: ${DB_NAME}
+    volumes:
+      - ./backup:/var/opt/mssql/backup:ro
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/bash", "/scripts/restore.sh"]
+    restart: "no"
+
+volumes:
+  sqldata:
